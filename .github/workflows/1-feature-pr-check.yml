@@ -1,0 +1,91 @@
+name: 1 - Feature/Fix PR Automation
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'fix/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  migration-check:
+    name: Migration build check
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          elif [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          elif [ -f pyproject.toml ]; then
+            pip install .
+          fi
+
+      - name: Build migration SQL (offline only)
+        working-directory: backend
+        run: alembic upgrade head --sql > /dev/null
+
+  create-pr-to-master:
+    name: Auto create PR to master
+    runs-on: ubuntu-latest
+    needs: migration-check
+
+    steps:
+      - name: Create PR if missing
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = context.ref.replace('refs/heads/', '');
+            const base = 'master';
+
+            const existing = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              head: `${owner}:${head}`,
+              base,
+              per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              core.info(`Open PR already exists: #${existing.data[0].number}`);
+              return;
+            }
+
+            const pr = await github.rest.pulls.create({
+              owner,
+              repo,
+              title: `[auto] ${head} -> ${base}`,
+              head,
+              base,
+              body: [
+                'PR criado automaticamente após push em branch de feature/fix.',
+                '',
+                'Checklist automático:',
+                '- ✅ Migration build check (alembic upgrade head --sql)',
+              ].join('\n'),
+              maintainer_can_modify: true,
+            });
+
+            core.info(`PR created: #${pr.data.number}`);
