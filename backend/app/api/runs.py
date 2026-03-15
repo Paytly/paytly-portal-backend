@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -37,6 +38,9 @@ def start_run(run_id: uuid.UUID, db: Session = Depends(get_db)) -> StartRunRespo
         )
 
     run.status = "PENDING"
+    if not getattr(run, "started_at", None):
+        run.started_at = datetime.now(UTC)
+
     db.commit()
 
     return StartRunResponse(run_id=run.id, status=run.status)

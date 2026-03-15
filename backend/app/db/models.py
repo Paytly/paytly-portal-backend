@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -35,7 +35,7 @@ class Upload(Base):
 
     # "bank" or "provider"
     side: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="PRESIGNED")
+    status: Mapped[str] = mapped_column(Enum("PRESIGNED", "UPLOADED", name="upload_status"), nullable=False, default="PRESIGNED", server_default="PRESIGNED")
 
     storage_key: Mapped[str] = mapped_column(Text, nullable=False)
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
@@ -60,7 +60,7 @@ class ReconciliationRun(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False)
 
-    status: Mapped[str] = mapped_column(String, nullable=False, default="CREATED")
+    status: Mapped[str] = mapped_column(String, nullable=False, default="CREATED", server_default="CREATED")
 
     bank_upload_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("uploads.id", ondelete="SET NULL"))
     provider_upload_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("uploads.id", ondelete="SET NULL"))

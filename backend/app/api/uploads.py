@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import Upload
@@ -32,9 +33,16 @@ def presign_upload(payload: PresignUploadRequest, db: Session = Depends(get_db))
         content_type=payload.content_type,
         size_bytes=payload.size_bytes,
     )
-    db.add(upload)
-    db.commit()
-    db.refresh(upload)
+    try:
+         db.add(upload)
+         db.commit()
+         db.refresh(upload)
+    except IntegrityError as err:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
 
     return PresignUploadResponse(
         upload_id=upload.id,
@@ -48,6 +56,14 @@ def complete_upload(upload_id: uuid.UUID, db: Session = Depends(get_db)) -> Comp
     upload = db.get(Upload, upload_id)
     if not upload:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
+    
+    if upload.status == "UPLOADED":
+         return CompleteUploadResponse.model_validate(upload)
+    if upload.status != "PRESIGNED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Upload cannot be completed from current state",
+        )
 
     upload.status = "UPLOADED"
     upload.uploaded_at = datetime.now(UTC)
